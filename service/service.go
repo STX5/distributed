@@ -36,8 +36,7 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 			// and ListenAndServeTLS immediately return ErrServerClosed.
 			// Make sure the program doesn't exit and waits instead for Shutdown to return.
 			log.Println(srv.ListenAndServe()) //出错才会返回，返回error，然后执行下一行的cancel()
-			log.Println("err listenning")
-			err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port)) // this will be called twice
+			err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port))
 			if err != nil {
 				log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
 			}
@@ -57,6 +56,9 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 			if err != nil {
 				log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
 			}
+			// need to cancel() first, because srv.Shutdown(ctx) makes
+			// srv.ListenAndServe() returns an error
+			// thus the select won't get notified of ctx.Done()
 			cancel()
 			srv.Shutdown(ctx)
 		}

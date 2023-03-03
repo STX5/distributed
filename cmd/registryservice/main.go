@@ -16,19 +16,28 @@ func main() {
 	var srv http.Server
 	srv.Addr = registry.ServerPort
 
-	go func() {
-		log.Println(srv.ListenAndServe()) //出错才会返回，然后执行cancel()
-		cancel()
-	}()
+	go func(context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			log.Println(srv.ListenAndServe()) //出错才会返回，然后执行cancel()
+			cancel()
+		}
+	}(ctx)
 
-	go func() {
-		fmt.Printf("Registry service started, Press any key to exit.\n")
-		var s string
-		fmt.Scanln(&s)
-		srv.Shutdown(ctx)
-		cancel()
-	}()
+	go func(context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			fmt.Printf("Registry service started, Press any key to exit.\n")
+			var s string
+			fmt.Scanln(&s)
+			srv.Shutdown(ctx)
+			cancel()
+		}
+	}(ctx)
 	<-ctx.Done() // 接收到cancel()
 	fmt.Println("Shutting down registry service")
-
 }
