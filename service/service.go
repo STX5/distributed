@@ -27,26 +27,41 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 	var srv http.Server
 	srv.Addr = ":" + port
 
-	go func() {
-		log.Println(srv.ListenAndServe()) //出错才会返回，返回error，然后执行下一行的cancel()
-		err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port))
-		if err != nil {
-			log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
+	go func(context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// When Shutdown is called, Serve, ListenAndServe,
+			// and ListenAndServeTLS immediately return ErrServerClosed.
+			// Make sure the program doesn't exit and waits instead for Shutdown to return.
+			log.Println(srv.ListenAndServe()) //出错才会返回，返回error，然后执行下一行的cancel()
+			log.Println("err listenning")
+			err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port)) // this will be called twice
+			if err != nil {
+				log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
+			}
+			cancel()
 		}
-		cancel()
-	}()
+	}(ctx)
 
-	go func() {
-		fmt.Printf("%v started, Press any key to exit. \n", serviceName)
-		var s string
-		fmt.Scanln(&s)
-		err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port))
-		if err != nil {
-			log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
+	go func(context.Context) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			fmt.Printf("%v started, Press any key to exit. \n", serviceName)
+			var s string
+			fmt.Scanln(&s)
+			err := registry.ShutdownService(fmt.Sprintf("http://%s:%s", host, port))
+			if err != nil {
+				log.Println(err) //不需要return，只需要记录。因为需要继续执行cancel()
+			}
+			cancel()
+			srv.Shutdown(ctx)
 		}
-		srv.Shutdown(ctx)
-		cancel()
-	}()
+
+	}(ctx)
 
 	return ctx
 }
