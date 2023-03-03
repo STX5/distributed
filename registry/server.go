@@ -30,6 +30,7 @@ var reg = registry{
 	mutex:        new(sync.Mutex),
 }
 
+// implement a http.Handler
 type RegistryService struct{}
 
 func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
