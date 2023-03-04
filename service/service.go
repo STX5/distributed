@@ -10,10 +10,10 @@ import (
 
 func Start(ctx context.Context, host, port string, reg registry.Registration,
 	registerHandersFunc func()) (context.Context, error) {
-	registerHandersFunc() // 注册handler
 
-	ctx = startService(ctx, reg.ServiceName, host, port) // 启动后，进行注册
-	err := registry.RegisterService(reg)                 //注册服务
+	registerHandersFunc()                                // 设置路由与handler
+	ctx = startService(ctx, reg.ServiceName, host, port) // 启动服务
+	err := registry.RegisterService(reg)                 // 注册服务
 	if err != nil {
 		return ctx, err
 	}
