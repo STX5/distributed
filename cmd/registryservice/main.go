@@ -16,7 +16,7 @@ func main() {
 	var srv http.Server
 	srv.Addr = registry.ServerPort
 
-	go func(context.Context) {
+	go func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -24,9 +24,9 @@ func main() {
 			log.Println(srv.ListenAndServe()) //出错才会返回，然后执行cancel()
 			cancel()
 		}
-	}(ctx)
+	}()
 
-	go func(context.Context) {
+	go func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -37,7 +37,7 @@ func main() {
 			srv.Shutdown(ctx)
 			cancel()
 		}
-	}(ctx)
+	}()
 	<-ctx.Done() // 接收到cancel()
 	fmt.Println("Shutting down registry service")
 }

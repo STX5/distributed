@@ -27,7 +27,7 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 	var srv http.Server
 	srv.Addr = ":" + port
 
-	go func(context.Context) {
+	go func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -42,9 +42,9 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 			}
 			cancel()
 		}
-	}(ctx)
+	}()
 
-	go func(context.Context) {
+	go func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -63,7 +63,7 @@ func startService(ctx context.Context, serviceName registry.ServiceName,
 			srv.Shutdown(ctx)
 		}
 
-	}(ctx)
+	}()
 
 	return ctx
 }
