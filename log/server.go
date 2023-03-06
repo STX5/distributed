@@ -21,7 +21,7 @@ func (fl fileLog) Write(data []byte) (int, error) {
 }
 
 func Run(destination string) {
-	log = stlog.New(fileLog(destination), "go: ", stlog.LstdFlags) // 创建自定义logger，将日志写入destination
+	log = stlog.New(fileLog(destination), "[go] - ", stlog.LstdFlags) // 创建自定义logger，将日志写入destination
 }
 
 func RegisterHandlers() {
