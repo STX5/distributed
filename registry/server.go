@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 const ServerPort = ":3000"
@@ -26,6 +27,49 @@ type registry struct {
 	// to protect the following slice
 	mutex         *sync.RWMutex
 	registrations []Registration
+}
+
+var once sync.Once
+
+func SetupRegistryService() {
+	once.Do(func() {
+		go reg.heartbeat(3 * time.Second)
+	})
+}
+
+func (r *registry) heartbeat(freq time.Duration) {
+	for {
+		var wg sync.WaitGroup
+		for _, reg := range r.registrations {
+			wg.Add(1)
+			go func(reg Registration) {
+				// if reg is removed after this goroutine is started
+				// thus means this reg is a nil pointer
+				defer wg.Done()
+				success := false
+				counter := 0
+			RETRY:
+				res, err := http.Get(reg.HeartbeatURL)
+				if err == nil || res.StatusCode == http.StatusOK {
+					log.Printf("Heartbeat check passed for %v", reg.ServiceName)
+					success = true
+				} else {
+					counter++
+					if counter >= 3 {
+						log.Printf("Heartbeat check for %v failed after 3 retry", reg.ServiceName)
+					} else {
+						time.Sleep(1 * time.Second)
+						goto RETRY
+					}
+				}
+				if !success {
+					r.remove(reg.ServiceURL)
+				}
+			}(reg)
+			wg.Wait()
+			time.Sleep(freq)
+		}
+	}
 }
 
 func (r *registry) add(reg Registration) error {

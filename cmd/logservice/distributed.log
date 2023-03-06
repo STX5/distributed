@@ -1,0 +1,10 @@
+[go] - 2023/03/06 15:46:45 [Portal] - Delete "http://localhost:3000/services": dial tcp 127.0.0.1:3000: connect: connection refused
+
+[go] - 2023/03/06 15:46:45 [Portal] - http: Server closed
+
+[go] - 2023/03/06 15:51:33 [GradingService] - failed to deregister service. Registry service responded with code 500
+
+[go] - 2023/03/06 16:09:38 [GradingService] - failed to deregister service. Registry service responded with code 500
+
+[go] - 2023/03/06 16:12:16 [GradingService] - failed to deregister service. Registry service responded with code 500
+
