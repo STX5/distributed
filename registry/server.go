@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -19,14 +20,13 @@ const ServicesURL = "http://localhost" + ServerPort + "/services"
 // 包级变量，存放所有服务的注册信息
 // 被导入时就会初始化
 var reg = registry{
-	registrations: make([]Registration, 0),
-	mutex:         new(sync.RWMutex),
+	registrations: sync.Map{},
 }
 
 type registry struct {
-	// to protect the following slice
-	mutex         *sync.RWMutex
-	registrations []Registration
+	// Key: service name;
+	// Val: Registration[]
+	registrations sync.Map
 }
 
 var once sync.Once
@@ -37,45 +37,56 @@ func SetupRegistryService() {
 	})
 }
 
+// TODO
 func (r *registry) heartbeat(freq time.Duration) {
 	for {
-		var wg sync.WaitGroup
-		for _, reg := range r.registrations {
-			wg.Add(1)
-			go func(reg Registration) {
-				// if reg is removed after this goroutine is started
-				// thus means this reg is a nil pointer
-				defer wg.Done()
-				success := false
-				counter := 0
-			RETRY:
-				res, err := http.Get(reg.HeartbeatURL)
-				if err == nil || res.StatusCode == http.StatusOK {
-					log.Printf("Heartbeat check passed for %v", reg.ServiceName)
-					success = true
-				} else {
-					counter++
-					if counter >= 3 {
-						log.Printf("Heartbeat check for %v failed after 3 retry", reg.ServiceName)
+		r.registrations.Range(func(serviceName, registration any) bool {
+			go func(serviceName, registration any) {
+				value, ok := registration.([]Registration)
+				if !ok {
+					log.Printf("type assertion failed when sending heartbeat to %s, %v is not a []Registration type, is a %v",
+						serviceName, registration, reflect.TypeOf(registration))
+				}
+				for _, reg := range value {
+					success := false
+					counter := 0
+				RETRY:
+					res, err := http.Get(reg.HeartbeatURL)
+					if err == nil || res.StatusCode == http.StatusOK {
+						log.Printf("Heartbeat check passed for %v", reg.ServiceName)
+						success = true
 					} else {
-						time.Sleep(1 * time.Second)
-						goto RETRY
+						counter++
+						if counter >= 3 {
+							log.Printf("Heartbeat check for %v failed after 3 retry", reg.ServiceName)
+						} else {
+							time.Sleep(1 * time.Second)
+							goto RETRY
+						}
+					}
+					if !success {
+						r.remove(reg.ServiceURL)
 					}
 				}
-				if !success {
-					r.remove(reg.ServiceURL)
-				}
-			}(reg)
-			wg.Wait()
-			time.Sleep(freq)
-		}
+			}(serviceName, registration)
+			return true
+		})
+		time.Sleep(freq)
 	}
 }
 
 func (r *registry) add(reg Registration) error {
-	r.mutex.Lock()
-	r.registrations = append(r.registrations, reg)
-	r.mutex.Unlock()
+	serviceName := reg.ServiceName
+	registration, exist := r.registrations.Load(serviceName)
+	if exist {
+		value, ok := registration.([]Registration)
+		if !ok {
+			log.Printf("type assertion failed when adding %s, %v is not a []Registration type, is a %v",
+				serviceName, registration, reflect.TypeOf(registration))
+		}
+		value = append(value, reg)
+		registration = value
+	}
 	err := r.sendRequiredServices(reg)
 	r.notify(patch{
 		Added: []patchEntry{
@@ -85,59 +96,68 @@ func (r *registry) add(reg Registration) error {
 			},
 		},
 	})
+	r.registrations.Store(serviceName, registration)
 	return err
 }
 
 func (r registry) notify(fullPatch patch) {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-	for _, reg := range r.registrations {
-		go func(reg Registration) {
-			for _, reqService := range reg.RequiredServices {
-				p := patch{Added: []patchEntry{}, Removed: []patchEntry{}}
-				sendUpdate := false
-				for _, added := range fullPatch.Added {
-					if added.Name == reqService {
-						p.Added = append(p.Added, added)
-						sendUpdate = true
-					}
-				}
-				for _, removed := range fullPatch.Removed {
-					if removed.Name == reqService {
-						p.Removed = append(p.Removed, removed)
-						sendUpdate = true
-					}
-				}
-				if sendUpdate {
-					err := r.sendPatch(p, reg.ServiceUpdateURL)
-					if err != nil {
-						log.Println(err)
-						return
-					}
-				}
-
+	r.registrations.Range(func(serviceName, registration any) bool {
+		go func(serviceName, registration any) {
+			value, ok := registration.([]Registration)
+			if !ok {
+				log.Printf("type assertion failed when notifying %s, %v is not a []Registration type, is a %v",
+					serviceName, registration, reflect.TypeOf(registration))
 			}
-		}(reg)
-	}
+			for _, reg := range value {
+				for _, reqService := range reg.RequiredServices {
+					p := patch{Added: []patchEntry{}, Removed: []patchEntry{}}
+					sendUpdate := false
+					for _, added := range fullPatch.Added {
+						if added.Name == reqService {
+							p.Added = append(p.Added, added)
+							sendUpdate = true
+						}
+					}
+					for _, removed := range fullPatch.Removed {
+						if removed.Name == reqService {
+							p.Removed = append(p.Removed, removed)
+							sendUpdate = true
+						}
+					}
+					if sendUpdate {
+						err := r.sendPatch(p, reg.ServiceUpdateURL)
+						if err != nil {
+							log.Println(err)
+							return
+						}
+					}
+
+				}
+			}
+
+		}(serviceName, registration)
+		return true
+	})
 }
 
 func (r registry) sendRequiredServices(reg Registration) error {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
 	var p patch
-	for _, serviceReg := range r.registrations { // 从已经注册的服务中找到当前reg所依赖的服务
-		// TODO: IF NOT FOUND?
+	r.registrations.Range(func(serviceName, registrations any) bool {
+		value, ok := registrations.([]Registration)
+		if !ok {
+			log.Printf("type assertion failed when sending required services for %s, %v is not a []Registration type, is a %v",
+				serviceName, registrations, reflect.TypeOf(registrations))
+		}
 		for _, reqServices := range reg.RequiredServices {
-			if serviceReg.ServiceName == reqServices {
+			if serviceName == reqServices {
 				p.Added = append(p.Added, patchEntry{
-					Name: serviceReg.ServiceName,
-					URL:  serviceReg.ServiceURL,
+					Name: value[0].ServiceName,
+					URL:  value[0].ServiceURL,
 				})
 			}
 		}
-	}
-
+		return true
+	})
 	err := r.sendPatch(p, reg.ServiceUpdateURL)
 	if err != nil {
 		return nil
@@ -159,23 +179,36 @@ func (r registry) sendPatch(p patch, url string) error {
 }
 
 func (r *registry) remove(url string) error {
-	for i := range reg.registrations {
-		if reg.registrations[i].ServiceURL == url {
-			r.notify(patch{
-				Removed: []patchEntry{
-					{
-						Name: r.registrations[i].ServiceName,
-						URL:  r.registrations[i].ServiceURL,
-					},
-				},
-			})
-			r.mutex.Lock()
-			reg.registrations = append(reg.registrations[:i], reg.registrations[i+1:]...)
-			r.mutex.Unlock()
-			return nil
+	var flag bool = false
+	reg.registrations.Range(func(serviceName, registrations any) bool {
+		value, ok := registrations.([]Registration)
+		if !ok {
+			log.Printf("type assertion failed when removing %s, %v is not a []Registration type, is a %v",
+				url, registrations, reflect.TypeOf(registrations))
 		}
+		for i, regisregistration := range value {
+			if regisregistration.ServiceURL == url {
+				r.notify(patch{
+					Removed: []patchEntry{
+						{
+							Name: serviceName.(ServiceName),
+							URL:  regisregistration.ServiceURL,
+						},
+					},
+				})
+				value = append(value[:i], value[i+1:]...)
+				reg.registrations.Store(serviceName, value)
+				flag = true
+				return false
+			}
+		}
+		return true
+	})
+	if flag != true {
+		return fmt.Errorf("service at URL %s not found", url)
+	} else {
+		return nil
 	}
-	return fmt.Errorf("service at URL %s not found", url)
 }
 
 // implement a http.Handler
@@ -194,8 +227,11 @@ func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Adding Service: %v with URL: %s\n", r.ServiceName, r.ServiceURL)
+		fmt.Println("adadaad")
+
 		err = reg.add(r)
 		if err != nil {
+			fmt.Println("adadaad111111")
 			log.Println(err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
