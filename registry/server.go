@@ -17,24 +17,10 @@ const ServerPort = ":3000"
 // 服务注册的地址，通过这个地址来注册\取消微服务
 const ServicesURL = "http://localhost" + ServerPort + "/services"
 
-// 包级变量，存放所有服务的注册信息
-// 被导入时就会初始化
-var reg = registry{
-	registrations: sync.Map{},
-}
-
 type registry struct {
 	// Key: service name;
 	// Val: Registration[]
 	registrations sync.Map
-}
-
-var once sync.Once
-
-func SetupRegistryService() {
-	once.Do(func() {
-		go reg.heartbeat(3 * time.Second)
-	})
 }
 
 // TODO
@@ -86,6 +72,9 @@ func (r *registry) add(reg Registration) error {
 		}
 		value = append(value, reg)
 		registration = value
+		r.registrations.Store(serviceName, registration)
+	} else {
+		r.registrations.Store(serviceName, []Registration{reg})
 	}
 	err := r.sendRequiredServices(reg)
 	r.notify(patch{
@@ -96,7 +85,6 @@ func (r *registry) add(reg Registration) error {
 			},
 		},
 	})
-	r.registrations.Store(serviceName, registration)
 	return err
 }
 
@@ -197,18 +185,36 @@ func (r *registry) remove(url string) error {
 					},
 				})
 				value = append(value[:i], value[i+1:]...)
-				reg.registrations.Store(serviceName, value)
+				if len(value) == 0 {
+					reg.registrations.Delete(serviceName)
+				} else {
+					reg.registrations.Store(serviceName, value)
+				}
 				flag = true
 				return false
 			}
 		}
 		return true
 	})
-	if flag != true {
+	if !flag {
 		return fmt.Errorf("service at URL %s not found", url)
 	} else {
 		return nil
 	}
+}
+
+// 包级变量，存放所有服务的注册信息
+// 被导入时就会初始化
+var reg = registry{
+	registrations: sync.Map{},
+}
+
+var once sync.Once
+
+func SetupRegistryService() {
+	once.Do(func() {
+		go reg.heartbeat(3 * time.Second)
+	})
 }
 
 // implement a http.Handler
@@ -227,11 +233,8 @@ func (s RegistryService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Adding Service: %v with URL: %s\n", r.ServiceName, r.ServiceURL)
-		fmt.Println("adadaad")
-
 		err = reg.add(r)
 		if err != nil {
-			fmt.Println("adadaad111111")
 			log.Println(err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
