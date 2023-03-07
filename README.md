@@ -1,7 +1,8 @@
-# Distributed  🚀
+# Distributed :globe_with_meridians:
 Distributed is a Go-based microservices architecture system that provides service registration, discovery, and dependency change notification functionalities. You can start various services under the cmd directory to run the system.
 ## :gear: Prerequisites
 Go v1.18 or higher
+
 Docker (optional)
 ## :rocket: Getting Started
 Clone this repository:
