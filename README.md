@@ -1,5 +1,5 @@
 # Distributed :globe_with_meridians:
-Distributed is a Go-based microservices architecture system that provides service registration, discovery, and dependency change notification functionalities. You can start various services under the cmd directory to run the system.
+Distributed is a Go-based microservices architecture system that provides service registration, discovery, and dependency update. You can put your custome micro services under the cmd directory to run the system.
 ## :gear: Prerequisites
 Go v1.18 or higher
 
@@ -44,11 +44,9 @@ ctx, err := service.Start(
 )
 ```
 ## :whale: Running with Docker
-Distributed can also be run using Docker. To build and run the Docker image:
-```
-docker build -t distributed .
-docker run -p 8081:8081 distributed
-```
+Distributed can also be run using Docker.
+
+`TBD`
 ## :hammer: Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
